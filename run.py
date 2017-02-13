@@ -1,5 +1,5 @@
 
-import time
+
 import traceback
 from vboxapi import VirtualBoxManager
 
@@ -22,7 +22,7 @@ def start():
     if mach:
         #mach.lockMachine(session, 1)
         w = mach.launchVMProcess(session, "gui", "")
-        w.waitForCompletion(-1)
+        w.waitForCompletion(50000)
         session.unlockMachine()
         return True
 
@@ -80,14 +80,18 @@ def run_test():
         args = ["/usr/bin/git", "clone", "https://github.com/SurveyMonkey/pyteamcity" ,"/home/t4ks/pyteamcity"] # first element WTF!!!!!!!
         #gp = gs.processCreate('/bin/ls', args, [], [vbm.constants.ProcessCreateFlag_WaitForStdOut], 0)
         gp = gs.processCreate('/usr/bin/git', args, None, [vbm.constants.ProcessCreateFlag_WaitForStdOut , vbm.constants.ProcessCreateFlag_WaitForStdErr], t)
-        gps = gs.processes
 
-        for i in gps:
-            gp_foo = i
-            print "Arguments: ", gp_foo.arguments
-            print "Ex path: ", gp_foo.executablePath
-            print "PID: ", gp_foo.PID
-            print "Status: " , gp_foo.status
+        try:
+            gps = gs.processes
+            for i in gps:
+                gp_foo = i
+                print "Arguments: ", gp_foo.arguments
+                print "Ex path: ", gp_foo.executablePath
+                print "PID: ", gp_foo.PID
+                print "Status: ", gp_foo.status
+        except:
+            print traceback.format_exc()
+            pass
 
         foo = []
         foo.append(vbm.constants.ProcessWaitForFlag_StdOut)
@@ -104,6 +108,8 @@ def run_test():
     except:
         print traceback.format_exc()
 
+
 #start()
 #stop()
-run_test()
+#run_test()
+#restore_basic_snap()
