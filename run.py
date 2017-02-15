@@ -1,18 +1,43 @@
 import traceback
 import argparse
-import os
 import logging
+import logging.handlers
+import os
+from platform import platform
 from vboxapi import VirtualBoxManager
 from time import sleep
 
-# https://github.com/mjdorma/pyvbox/issues/35
+log_path = os.path.dirname(os.path.abspath(__file__))
+FORMAT = '%(asctime)-15s %(clientip)s %(user)-8s %(message)s'
+
+logger = logging.getLogger("run_sh")
+
+p = platform()
+
+if 'Windows' in p:
+    hdlr = logging.FileHandler(log_path + os.sep + 'run_test.log')
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    hdlr.setFormatter(formatter)
+    logger.addHandler(hdlr)
+    logger.setLevel(logging.INFO)
+
+elif 'Linux' in p:
+    handler = logging.handlers.SysLogHandler(address='/var/log')
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+#https://github.com/mjdorma/pyvbox/issues/35
+
 
 def wait(w):
     w.waitForCompletion(-1)
 
 
-def start():
-    report_file = "D:\\testtask\\report.xml"
+def start(target, repo, report, branch):
+    TARGET_NAME = target
+    report_file = report
     vbm = VirtualBoxManager()
     vbox = vbm.vbox
     mach = vbox.findMachine(TARGET_NAME)
@@ -20,21 +45,28 @@ def start():
 
     if mach:
         #mach.lockMachine(session, 1)
-        w = mach.launchVMProcess(session, "gui", "")
-        w.waitForCompletion(-1)
-        state = mach.state
-        print "State: " , state  #MachineState_
-        session.unlockMachine()
-        print "Sleep 40 sec for the start VM ..."
-        sleep(40)
-        print "cloning repo"
-        clone_repo(session, mach, vbm)
-        print "Wait while repo cloning ..."
+        if  mach.state == vbm.constants.MachineState_Running:
+            logger.info("Machine already running")
+        else:
+            w = mach.launchVMProcess(session, "gui", "")
+            w.waitForCompletion(-1)
+            logger.info("Sleep 40 sec for the start VM ...")
+            sleep(40)
+
+        if session.state == vbm.constants.SessionState_Locked:
+            logger.info("session loked, sessionPID: " + str(mach.sessionPID))
+            session.unlockMachine()
+
+        #session.unlockMachine()
+
+        logger.info("cloning repo")
+        clone_repo(session, mach, vbm, repo, branch)
+        logger.info("Wait while repo cloning ...")
         sleep(10)
-        print "run test"
-        print "Wait while test not ended ..."
-        run_test(session, mach, vbm, report_file)
-        print "Done"
+        logger.info("run test")
+        logger.info("Wait while test not ended ...")
+        run_test(session, mach, vbm, report_file, TARGET_NAME)
+        logger.info("Done")
         return True
 
 
@@ -42,7 +74,7 @@ def stop(mgr, machine, session):
     mach = machine
 
     if session.state == mgr.constants.SessionState_Locked:
-        print "session loked, sessionPID: ", mach.sessionPID
+        logger.info("session loked, sessionPID: " + str(mach.sessionPID))
         session.unlockMachine()
 
     if mach:
@@ -52,26 +84,26 @@ def stop(mgr, machine, session):
         progress = console.powerDown()
         progress.waitForCompletion(60)
         #session.unlockMachine()
-        print "Stop machine"
+        logger.info("Stop machine")
         sleep(5)
         return True
 
 
-def restore_basic_snap():
+def restore_basic_snap(target):
     vbm = VirtualBoxManager()
     vbox = vbm.vbox
-    machine = vbox.findMachine(TARGET_NAME)
+    machine = vbox.findMachine(target)
     session = vbm.openMachineSession(machine)
     stop(vbm, machine, session)
 
     if session.state == vbm.constants.SessionState_Locked:
-        print "session locked, sessionPID: ", machine.sessionPID
+        logger.info("session locked, sessionPID: " + str(machine.sessionPID))
         session.unlockMachine()
 
     machine.lockMachine(session, 1)
     m = session.machine
     if m:
-        print "Restore snapshot"
+        logger.info("Restore snapshot")
         w = m.restoreSnapshot(m.currentSnapshot)
         w.waitForCompletion(-1)
         session.unlockMachine()
@@ -79,7 +111,7 @@ def restore_basic_snap():
         return True
 
 
-def clone_repo(session , machine, mgr):
+def clone_repo(session , machine, mgr, repo, branch):
 
     vbm = mgr
     mach = machine
@@ -99,18 +131,19 @@ def clone_repo(session , machine, mgr):
         print gs_state_result
 
         #args = ["-l", "-a"]
-        args = ["/usr/bin/git", "clone", "https://github.com/teror4uks/testtask.git" ,"/home/t4ks/testtask"] # first element WTF!!!!!!!
+        #args = ["/usr/bin/git", "clone", "https://github.com/teror4uks/testtask.git" ,"/home/t4ks/testtask"] # first element WTF!!!!!!!
         #gp = gs.processCreate('/bin/ls', args, [], [vbm.constants.ProcessCreateFlag_WaitForStdOut], 0)
+        args = ["/usr/bin/git", "clone", "-b", branch, repo, "/home/t4ks/testtask"]
         gp = gs.processCreate('/usr/bin/git', args, None, [vbm.constants.ProcessCreateFlag_WaitForStdOut , vbm.constants.ProcessCreateFlag_WaitForStdErr], t)
 
         try:
             gps = gs.processes
             for i in gps:
                 gp_foo = i
-                print "Arguments: ", gp_foo.arguments
-                print "Ex path: ", gp_foo.executablePath
-                print "PID: ", gp_foo.PID
-                print "Status: ", gp_foo.status
+                logger.info("Arguments: " + str(gp_foo.arguments))
+                logger.info("Ex path: " + str(gp_foo.executablePath))
+                logger.info("PID: " + str(gp_foo.PID))
+                logger.info("Status: " + str(gp_foo.status))
         except:
             print traceback.format_exc()
             pass
@@ -121,18 +154,18 @@ def clone_repo(session , machine, mgr):
 
         waitResult = gp.waitForArray(foo, t)
         stdOut = gp.read(1, 10000, t)
-        print "stdOut: ", stdOut
+        logger.info("stdOut: " + stdOut)
         stdErr = gp.read(2, 10000, t)
-        print "stdErr: ", stdErr
+        logger.info("stdErr: " + stdErr)
         if waitResult == vbm.constants.ProcessWaitResult_StdOut:
-            print "Process Load finished"
+            logger.info("Process Load finished")
         session.unlockMachine()
     except:
         print traceback.format_exc()
 
 
 
-def run_test(session, machine, mgr, report_path):
+def run_test(session, machine, mgr, report_path, target):
     report_file = report_path
     mach = machine
     vbm = mgr
@@ -179,30 +212,30 @@ def run_test(session, machine, mgr, report_path):
         waitResult = gp.waitForArray(foo, t)
         try:
             stdOut = gp.read(1, 10000000, t)
-            print "stdOut: ", stdOut
+            logger.info("stdOut: " + stdOut)
         except:
             print traceback.format_exc()
 
         try:
             stdErr = gp.read(2, 10000000, t)
-            print "stdErr: ", stdErr
+            logger.info("stdErr: " + stdErr)
         except:
-            print traceback.format_exc()
+            logger.info(traceback.format_exc())
 
-        print "waitResult: ", waitResult
+        logger.info("waitResult: " + waitResult)
         if waitResult == vbm.constants.ProcessWaitResult_StdOut:
-            print "Process Load finished"
+            logger.info("Process Load finished")
 
-        print "Copy report in ", report_file
+        logger.info("Copy report in " + report_file)
         sleep(7)
         gs.fileCopyFromGuest("/home/t4ks/testtask/report.xml", report_file, [vbm.constants.FileCopyFlag_NoReplace])
 
         session.unlockMachine()
 
-        print "End test... "
-        restore_basic_snap()
+        logger.info("End test... ")
+        restore_basic_snap(target)
     except:
-        print traceback.format_exc()
+        logger.info(traceback.format_exc())
 
     return 0
 
@@ -229,40 +262,33 @@ def cli():
     parser.add_argument('-d', '--dreport', dest='report', default=None,
                         help='directory for save report')
 
-    (options, args) = parser.parse_args()
+    parser.usage = "--target <machine> --repo <git repo> [--branch] <default master> --dreport <absolute pasth for report file>"
+
+    options = parser.parse_args()
+    print options
 
     if options.target is None:
-        logging.critical("add target")
+        logger.critical("add target")
         common_result += 1
 
     if options.repo is None:
-        logging.critical('add repo')
+        logger.critical('add repo')
         common_result += 1
 
-    if options.repo is None:
-        logging.critical('add directory for report')
+    if options.report is None:
+        logger.critical('add directory for report')
         common_result += 1
-
 
     print('Check input parameters - COMPLETED')
 
     if common_result == 0:
         try:
-            (options.path, options.locale, options.destination)
+            start(options.target, options.repo, options.report, options.branch)
         except Exception as e:
-            print(e)
+            logger.critical(e)
 
     return common_result
 
-TARGET_NAME = 'ubuntu-server-1404'
-BASIC_SNAPSHOT = 'clear'
-REPO = ''
-BRANCH = 'master'
-REPORT_FOLDER = ''
-
-
 if __name__ == '__main__':
-    try:
-        start()
-    except:
-        print traceback.format_exc()
+    #start()
+    exit(cli())
