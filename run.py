@@ -22,7 +22,7 @@ if 'Windows' in p:
     logger.setLevel(logging.INFO)
 
 elif 'Linux' in p:
-    handler = logging.handlers.SysLogHandler(address='/var/log')
+    handler = logging.handlers.SysLogHandler(address='/var/log/syslog')
     formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
