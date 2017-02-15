@@ -265,7 +265,6 @@ def cli():
     parser.usage = "--target <machine> --repo <git repo> [--branch] <default master> --dreport <absolute pasth for report file>"
 
     options = parser.parse_args()
-    print options
 
     if options.target is None:
         logger.critical("add target")
@@ -284,8 +283,8 @@ def cli():
     if common_result == 0:
         try:
             start(options.target, options.repo, options.report, options.branch)
-        except Exception as e:
-            logger.critical(e)
+        except:
+            print 'Not actual parametrs'
 
     return common_result
 
