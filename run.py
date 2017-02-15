@@ -1,64 +1,88 @@
 import traceback
+import argparse
+import os
+import logging
 from vboxapi import VirtualBoxManager
+from time import sleep
 
 # https://github.com/mjdorma/pyvbox/issues/35
-
-BASIC_SNAPSHOT = 'clear'
-TARGET_NAME = 'ubuntu-server-1404'
-
 
 def wait(w):
     w.waitForCompletion(-1)
 
 
 def start():
+    report_file = "D:\\testtask\\report.xml"
     vbm = VirtualBoxManager()
     vbox = vbm.vbox
     mach = vbox.findMachine(TARGET_NAME)
-
     session = vbm.getSessionObject(vbox)
+
     if mach:
         #mach.lockMachine(session, 1)
         w = mach.launchVMProcess(session, "gui", "")
-        w.waitForCompletion(50000)
+        w.waitForCompletion(-1)
+        state = mach.state
+        print "State: " , state  #MachineState_
         session.unlockMachine()
+        print "Sleep 40 sec for the start VM ..."
+        sleep(40)
+        print "cloning repo"
+        clone_repo(session, mach, vbm)
+        print "Wait while repo cloning ..."
+        sleep(10)
+        print "run test"
+        print "Wait while test not ended ..."
+        run_test(session, mach, vbm, report_file)
+        print "Done"
         return True
 
 
-def stop():
-    vbm = VirtualBoxManager()
-    vbox = vbm.vbox
-    mach = vbox.findMachine(TARGET_NAME)
+def stop(mgr, machine, session):
+    mach = machine
 
-    session = vbm.getSessionObject(vbox)
+    if session.state == mgr.constants.SessionState_Locked:
+        print "session loked, sessionPID: ", mach.sessionPID
+        session.unlockMachine()
+
     if mach:
         mach.lockMachine(session, 1)
         console = session.console
         # progress = console.restoreSnapshot(mach.currentSnapshot)
         progress = console.powerDown()
         progress.waitForCompletion(60)
-        session.unlockMachine()
+        #session.unlockMachine()
+        print "Stop machine"
+        sleep(5)
         return True
 
 
 def restore_basic_snap():
     vbm = VirtualBoxManager()
     vbox = vbm.vbox
-    mach = vbox.findMachine(TARGET_NAME)
-    session = vbm.openMachineSession(mach)
+    machine = vbox.findMachine(TARGET_NAME)
+    session = vbm.openMachineSession(machine)
+    stop(vbm, machine, session)
 
-    mach = session.machine
-    wait(mach.restoreSnapshot(mach.currentSnapshot))
-    session.unlockMachine()
+    if session.state == vbm.constants.SessionState_Locked:
+        print "session locked, sessionPID: ", machine.sessionPID
+        session.unlockMachine()
 
-    return True
+    machine.lockMachine(session, 1)
+    m = session.machine
+    if m:
+        print "Restore snapshot"
+        w = m.restoreSnapshot(m.currentSnapshot)
+        w.waitForCompletion(-1)
+        session.unlockMachine()
+
+        return True
 
 
-def clone_repo():
-    vbm = VirtualBoxManager()
-    vbox = vbm.vbox
-    session = vbm.getSessionObject(vbox)
-    mach = vbox.findMachine(TARGET_NAME)
+def clone_repo(session , machine, mgr):
+
+    vbm = mgr
+    mach = machine
     try:
         mach.lockMachine(session, 1)
 
@@ -102,16 +126,20 @@ def clone_repo():
         print "stdErr: ", stdErr
         if waitResult == vbm.constants.ProcessWaitResult_StdOut:
             print "Process Load finished"
-
+        session.unlockMachine()
     except:
         print traceback.format_exc()
 
 
-def run_test():
-    vbm = VirtualBoxManager()
-    vbox = vbm.vbox
-    session = vbm.getSessionObject(vbox)
-    mach = vbox.findMachine(TARGET_NAME)
+
+def run_test(session, machine, mgr, report_path):
+    report_file = report_path
+    mach = machine
+    vbm = mgr
+    #vbm = VirtualBoxManager()
+    #vbox = vbm.vbox
+    #session = vbm.getSessionObject(vbox)
+    #mach = vbox.findMachine(TARGET_NAME)
     try:
         mach.lockMachine(session, 1)
 
@@ -165,14 +193,76 @@ def run_test():
         if waitResult == vbm.constants.ProcessWaitResult_StdOut:
             print "Process Load finished"
 
-        gs.fileCopyFromGuest("/home/t4ks/testtask/report.xml", "D:\\testtask\\report.xml", [vbm.constants.FileCopyFlag_NoReplace])
+        print "Copy report in ", report_file
+        sleep(7)
+        gs.fileCopyFromGuest("/home/t4ks/testtask/report.xml", report_file, [vbm.constants.FileCopyFlag_NoReplace])
 
+        session.unlockMachine()
+
+        print "End test... "
+        restore_basic_snap()
     except:
         print traceback.format_exc()
 
+    return 0
 
-#start()
-#stop()
-run_test()
-#clone_repo()
-#restore_basic_snap()
+
+
+def cli():
+    common_result = 0
+
+    # --- Input parameters
+    parser = argparse.ArgumentParser()
+
+
+    parser.description = 'Script for start and run test in target machine'
+
+    parser.add_argument('-t', '--target', dest='target', default=None,
+                      help='target machine')
+
+    parser.add_argument('-r', '--repo', dest='repo', default=None,
+                      help='source repo')
+
+    parser.add_argument('-b', '--branch', dest='branch', default='master',
+                      help='branch in source repo')
+
+    parser.add_argument('-d', '--dreport', dest='report', default=None,
+                        help='directory for save report')
+
+    (options, args) = parser.parse_args()
+
+    if options.target is None:
+        logging.critical("add target")
+        common_result += 1
+
+    if options.repo is None:
+        logging.critical('add repo')
+        common_result += 1
+
+    if options.repo is None:
+        logging.critical('add directory for report')
+        common_result += 1
+
+
+    print('Check input parameters - COMPLETED')
+
+    if common_result == 0:
+        try:
+            (options.path, options.locale, options.destination)
+        except Exception as e:
+            print(e)
+
+    return common_result
+
+TARGET_NAME = 'ubuntu-server-1404'
+BASIC_SNAPSHOT = 'clear'
+REPO = ''
+BRANCH = 'master'
+REPORT_FOLDER = ''
+
+
+if __name__ == '__main__':
+    try:
+        start()
+    except:
+        print traceback.format_exc()
