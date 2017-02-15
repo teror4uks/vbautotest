@@ -154,9 +154,9 @@ def clone_repo(session , machine, mgr, repo, branch):
 
         waitResult = gp.waitForArray(foo, t)
         stdOut = gp.read(1, 10000, t)
-        logger.info("stdOut: " + stdOut)
+        logger.info("stdOut: " + str(stdOut))
         stdErr = gp.read(2, 10000, t)
-        logger.info("stdErr: " + stdErr)
+        logger.info("stdErr: " + str(stdErr))
         if waitResult == vbm.constants.ProcessWaitResult_StdOut:
             logger.info("Process Load finished")
         session.unlockMachine()
@@ -212,17 +212,17 @@ def run_test(session, machine, mgr, report_path, target):
         waitResult = gp.waitForArray(foo, t)
         try:
             stdOut = gp.read(1, 10000000, t)
-            logger.info("stdOut: " + stdOut)
+            logger.info("stdOut: " + str(stdOut))
         except:
             print traceback.format_exc()
 
         try:
             stdErr = gp.read(2, 10000000, t)
-            logger.info("stdErr: " + stdErr)
+            logger.info("stdErr: " + str(stdErr))
         except:
             logger.info(traceback.format_exc())
 
-        logger.info("waitResult: " + waitResult)
+        logger.info("waitResult: " + str(waitResult))
         if waitResult == vbm.constants.ProcessWaitResult_StdOut:
             logger.info("Process Load finished")
 
